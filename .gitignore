@@ -1,10 +1,35 @@
-# Ignore CrossOver Bottles and heavy prefixes
+# OS & Editor Artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+*.tmp
+
+# Compiled Binaries & Build Output
+cxtool
+*.o
+*.dSYM/
+.build/
+DerivedData/
+
+# CrossOver Bottle Data & Virtual Disks
 Steam/
 Epic Games/
 *.dmg
 *.iso
-.DS_Store
-Icon?
+*.vmdk
+*.qcow2
 
-# Ignore compiled binaries
-cxtool
+# CrossOver & cxtool Runtime Artifacts
+.cxtool/
+.cxtool.json
+backups/
+*.iconset/
+*.icns
