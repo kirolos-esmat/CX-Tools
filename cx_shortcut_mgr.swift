@@ -23,18 +23,20 @@ struct Config: Codable {
     var auto_detect_crossover_bottles: Bool
     var crossover_apps_dir: String
     var external_game_roots: [String]
-    var backup_before_write: Bool
-    var offline_roots_are_non_destructive: Bool
     var default_style: String
 
+    // Optional legacy fields for backwards compatibility with existing ~/.cxtool.json
+    var backup_before_write: Bool?
+    var offline_roots_are_non_destructive: Bool?
+
     static let defaultConfig = Config(
-        bottle_directories: ["/Users/exampleuser/CXPBottles"],
+        bottle_directories: [],
         auto_detect_crossover_bottles: true,
-        crossover_apps_dir: "/Users/exampleuser/Applications/CrossOver",
-        external_game_roots: ["/Volumes/ExternalDrive"],
-        backup_before_write: true,
-        offline_roots_are_non_destructive: true,
-        default_style: "macos"
+        crossover_apps_dir: "~/Applications/CrossOver",
+        external_game_roots: [],
+        default_style: "macos",
+        backup_before_write: nil,
+        offline_roots_are_non_destructive: nil
     )
 }
 
@@ -77,6 +79,13 @@ struct TransactionManifest: Codable {
     var archived_apps: [MovedItemRecord]?
 }
 
+func currentUserHomeDirectory() -> URL {
+    if let envHome = ProcessInfo.processInfo.environment["HOME"], !envHome.isEmpty {
+        return URL(fileURLWithPath: envHome)
+    }
+    return FileManager.default.homeDirectoryForCurrentUser
+}
+
 // MARK: - Process Lock
 
 class ProcessLock {
@@ -85,7 +94,7 @@ class ProcessLock {
     private let lockPath: String
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = currentUserHomeDirectory().path
         let dir = "\(home)/.cxtool"
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         lockPath = "\(dir)/cxtool.lock"
@@ -119,7 +128,7 @@ class ConfigManager {
     let configURL: URL
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = currentUserHomeDirectory()
         configURL = home.appendingPathComponent(".cxtool.json")
     }
 
@@ -404,29 +413,42 @@ class DiscoveryEngine {
 
     // MARK: - Disambiguation Helper
 
+    enum ResolveResult {
+        case success(ShortcutInfo)
+        case ambiguous([ShortcutInfo])
+        case notFound
+    }
+
     func resolveShortcut(query: String, in shortcuts: [ShortcutInfo]) -> ShortcutInfo? {
+        switch resolveShortcutDetailed(query: query, in: shortcuts) {
+        case .success(let s): return s
+        default: return nil
+        }
+    }
+
+    func resolveShortcutDetailed(query: String, in shortcuts: [ShortcutInfo]) -> ResolveResult {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
 
         // 1. Exact case-insensitive match
         if let exact = shortcuts.first(where: { $0.name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame }) {
-            return exact
+            return .success(exact)
         }
 
         // 2. Partial contains match
         let matches = shortcuts.filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
         if matches.count == 1 {
-            return matches.first!
+            return .success(matches.first!)
         } else if matches.count > 1 {
             print("❌ Ambiguous query \"\(query)\". Matches multiple games:")
             for m in matches {
                 print("  • \(m.name) (Bottle: \(m.bottleName))")
             }
             print("Please specify the exact full title.")
-            return nil
+            return .ambiguous(matches)
         } else {
             print("❌ No game shortcut found matching \"\(query)\".")
             print("Run 'cxtool list' to view all available shortcuts.")
-            return nil
+            return .notFound
         }
     }
 }
@@ -624,7 +646,7 @@ class TransactionManager {
     let backupBaseURL: URL
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = currentUserHomeDirectory()
         backupBaseURL = home.appendingPathComponent(".cxtool/backups")
         try? FileManager.default.createDirectory(at: backupBaseURL, withIntermediateDirectories: true)
     }
@@ -806,17 +828,28 @@ class CXToolCLI {
         self.discovery = DiscoveryEngine(config: config)
     }
 
+    func resolveOrExit(query: String, in shortcuts: [ShortcutInfo]) -> ShortcutInfo {
+        switch discovery.resolveShortcutDetailed(query: query, in: shortcuts) {
+        case .success(let item):
+            return item
+        case .ambiguous:
+            exit(4)
+        case .notFound:
+            exit(3)
+        }
+    }
+
     func run(args: [String]) {
         guard args.count > 1 else {
             printUsage()
-            return
+            exit(2)
         }
 
         // Acquire process lock
         guard ProcessLock.shared.acquire() else {
             print("❌ Another cxtool process is currently running.")
             print("If no process is running, remove ~/.cxtool/cxtool.lock to clear the lock.")
-            return
+            exit(6)
         }
         defer { ProcessLock.shared.release() }
 
@@ -853,18 +886,19 @@ class CXToolCLI {
         case "config":
             cmdConfig(args: remaining)
         case "version", "--version", "-v":
-            print("cxtool 1.1.2")
+            print("cxtool 1.1.3")
         case "help", "--help", "-h":
             printUsage()
         default:
             print("Unknown command: \(command)")
             printUsage()
+            exit(2)
         }
     }
 
     func printUsage() {
         print("""
-        cxtool - CrossOver Mac Bottle Shortcut & Icon Manager (V1.1.2 Stable)
+        cxtool - CrossOver Mac Bottle Shortcut & Icon Manager (V1.1.3 Stable)
 
         USAGE:
           cxtool <command> [options]
@@ -980,8 +1014,8 @@ class CXToolCLI {
         }
 
         print("\n[Safety & Policy]")
-        print("  Safety backups ................... \(config.backup_before_write ? "ENABLED ✅" : "DISABLED ❌")")
-        print("  Offline pruning protection ....... \(config.offline_roots_are_non_destructive ? "ENABLED ✅" : "DISABLED ❌")")
+        print("  Safety backups ................... MANDATORY (always enabled) ✅")
+        print("  Offline pruning protection ....... ENFORCED (always protected) ✅")
         print("  Process locking .................. ENABLED (~/.cxtool/cxtool.lock) ✅")
         print("  Default Icon Style ............... \(config.default_style)")
         print("\nDoctor Check Complete.")
@@ -992,13 +1026,11 @@ class CXToolCLI {
     func cmdInspect(args: [String]) {
         guard let name = args.first, !name.hasPrefix("--") else {
             print("Usage: cxtool inspect \"Game Name\"")
-            return
+            exit(2)
         }
 
         let shortcuts = discovery.scanAllShortcuts()
-        guard let item = discovery.resolveShortcut(query: name, in: shortcuts) else {
-            return
-        }
+        let item = resolveOrExit(query: name, in: shortcuts)
 
         print("=== State Inspection: \(item.name) ===")
         print("Bottle:                  \(item.bottleName)")
@@ -1009,7 +1041,7 @@ class CXToolCLI {
         print("Target Executable:       \(item.targetExe ?? "<None>")")
         print("External Dependency:     \(item.externalDependency ?? "<None>")")
         print("External Drive Status:   \(item.isOffline ? "OFFLINE ⚠️" : "ONLINE ✅")")
-        print("Squircle Style:          \(item.isSquircle ? "YES (Apple HIG) ✅" : "NO (Needs Repair) ❌")")
+        print("Squircle Style:          \(item.isSquircle ? "YES (macOS Squircle) ✅" : "NO (Needs Repair) ❌")")
         print("Corner Alpha:            \(item.cornerAlpha)")
         print("Is CrossOver Gear Icon:  \(item.isCrossoverCog ? "YES ⚙️" : "NO")")
 
@@ -1024,13 +1056,11 @@ class CXToolCLI {
     func cmdVerify(args: [String]) {
         guard let name = args.first, !name.hasPrefix("--") else {
             print("Usage: cxtool verify \"Game Name\"")
-            return
+            exit(2)
         }
 
         let shortcuts = discovery.scanAllShortcuts()
-        guard let item = discovery.resolveShortcut(query: name, in: shortcuts) else {
-            return
-        }
+        let item = resolveOrExit(query: name, in: shortcuts)
 
         let fm = FileManager.default
         print("=== Launch Chain & Integrity Audit: [\(item.name)] ===")
@@ -1117,6 +1147,7 @@ class CXToolCLI {
             }
         } else {
             print("Overall ..................... DEGRADED ❌")
+            exit(5)
         }
     }
 
@@ -1153,7 +1184,7 @@ class CXToolCLI {
         let snapshots = TransactionManager.shared.listSnapshots()
         guard let latest = snapshots.first(where: { $0.undone != true }) else {
             print("❌ No active transactions found to undo.")
-            return
+            exit(1)
         }
 
         print("Undoing most recent transaction [\(latest.transaction_id)]:")
@@ -1166,6 +1197,7 @@ class CXToolCLI {
             print("\n🎉 Undo completed successfully! Files restored to previous state.")
         } else {
             print("❌ Undo encountered errors during rollback.")
+            exit(1)
         }
     }
 
@@ -1174,7 +1206,7 @@ class CXToolCLI {
     func cmdSetIcon(args: [String]) {
         guard args.count >= 2, !args[0].hasPrefix("--"), !args[1].hasPrefix("--") else {
             print("Usage: cxtool set-icon \"Game Name\" /path/to/image.png [--style macos|full-bleed|emblem|raw] [--bg black|white|#hex] [--scale <float>]")
-            return
+            exit(2)
         }
 
         let targetName = args[0]
@@ -1188,14 +1220,15 @@ class CXToolCLI {
         let scale = scaleStr.flatMap { Double($0) }.map { CGFloat($0) } ?? (style == .emblem ? 0.85 : 1.0)
 
         let shortcuts = discovery.scanAllShortcuts()
-        guard let item = discovery.resolveShortcut(query: targetName, in: shortcuts),
-              let appPath = item.appPath else {
-            return
+        let item = resolveOrExit(query: targetName, in: shortcuts)
+        guard let appPath = item.appPath else {
+            print("❌ Shortcut has no associated macOS app wrapper.")
+            exit(1)
         }
 
         guard FileManager.default.fileExists(atPath: imagePath) else {
             print("❌ Source image does not exist: \(imagePath)")
-            return
+            exit(2)
         }
 
         print("Planning icon update for [\(item.name)]:")
@@ -1295,13 +1328,14 @@ class CXToolCLI {
     func cmdRepair(args: [String]) {
         guard let targetName = args.first, !targetName.hasPrefix("--") else {
             print("Usage: cxtool repair \"Game Name\" [--dry-run]")
-            return
+            exit(2)
         }
 
         let shortcuts = discovery.scanAllShortcuts()
-        guard let item = discovery.resolveShortcut(query: targetName, in: shortcuts),
-              let appPath = item.appPath else {
-            return
+        let item = resolveOrExit(query: targetName, in: shortcuts)
+        guard let appPath = item.appPath else {
+            print("❌ Shortcut has no associated macOS app wrapper.")
+            exit(1)
         }
 
         if item.isSquircle {
@@ -1353,7 +1387,7 @@ class CXToolCLI {
     func cmdRename(args: [String]) {
         guard args.count >= 2, !args[0].hasPrefix("--"), !args[1].hasPrefix("--") else {
             print("Usage: cxtool rename \"Current Name\" \"New Display Name\" [--dry-run]")
-            return
+            exit(2)
         }
 
         let oldName = args[0]
@@ -1361,14 +1395,15 @@ class CXToolCLI {
         let dryRun = args.contains("--dry-run")
 
         let shortcuts = discovery.scanAllShortcuts()
-        guard let item = discovery.resolveShortcut(query: oldName, in: shortcuts),
-              let oldAppPath = item.appPath else {
-            return
+        let item = resolveOrExit(query: oldName, in: shortcuts)
+        guard let oldAppPath = item.appPath else {
+            print("❌ Shortcut has no associated macOS app wrapper.")
+            exit(1)
         }
 
         if shortcuts.contains(where: { $0.name.localizedCaseInsensitiveCompare(newName) == .orderedSame }) {
             print("❌ A shortcut named \"\(newName)\" already exists!")
-            return
+            exit(1)
         }
 
         let fm = FileManager.default
@@ -1379,7 +1414,7 @@ class CXToolCLI {
         let bottles = discovery.discoverBottles()
         guard let bottle = bottles.first(where: { $0.name == item.bottleName }) else {
             print("❌ Cannot find associated bottle [\(item.bottleName)]")
-            return
+            exit(1)
         }
 
         let confPath = "\(bottle.path)/cxmenu.conf"
@@ -1405,7 +1440,7 @@ class CXToolCLI {
 
         guard let (txId, _) = TransactionManager.shared.createSnapshot(action: "rename", target: "\(item.name)_to_\(newName)", bottle: item.bottleName, touchedFiles: touchedFiles) else {
             print("❌ Failed to initialize transaction snapshot.")
-            return
+            exit(1)
         }
         print("📦 Transaction snapshot created: \(txId)")
 
@@ -1418,7 +1453,7 @@ class CXToolCLI {
         } catch {
             print("❌ Failed to rename app wrapper: \(error.localizedDescription)")
             _ = TransactionManager.shared.rollback(id: txId)
-            return
+            exit(1)
         }
 
         // 2. Update Info.plist inside new wrapper
@@ -1478,22 +1513,23 @@ class CXToolCLI {
     func cmdDelete(args: [String]) {
         guard let targetName = args.first, !targetName.hasPrefix("--") else {
             print("Usage: cxtool delete \"Game Name\" [--dry-run] [--force]")
-            return
+            exit(2)
         }
 
         let dryRun = args.contains("--dry-run")
         let force = args.contains("--force")
 
         let shortcuts = discovery.scanAllShortcuts()
-        guard let item = discovery.resolveShortcut(query: targetName, in: shortcuts),
-              let appPath = item.appPath else {
-            return
+        let item = resolveOrExit(query: targetName, in: shortcuts)
+        guard let appPath = item.appPath else {
+            print("❌ Shortcut has no associated macOS app wrapper.")
+            exit(1)
         }
 
         let bottles = discovery.discoverBottles()
         guard let bottle = bottles.first(where: { $0.name == item.bottleName }) else {
             print("❌ Cannot find associated bottle [\(item.bottleName)]")
-            return
+            exit(1)
         }
 
         let fm = FileManager.default
@@ -1541,7 +1577,7 @@ class CXToolCLI {
 
         guard let (txId, _) = TransactionManager.shared.createSnapshot(action: "delete", target: item.name, bottle: item.bottleName, touchedFiles: touchedFiles) else {
             print("❌ Failed to initialize backup snapshot.")
-            return
+            exit(1)
         }
         print("📦 Transaction snapshot created: \(txId)")
 
@@ -1595,7 +1631,7 @@ class CXToolCLI {
         } catch {
             print("❌ Failed to archive app wrapper: \(error.localizedDescription)")
             _ = TransactionManager.shared.rollback(id: txId)
-            return
+            exit(1)
         }
 
         TransactionManager.shared.completeSnapshot(id: txId, verified: true, archivedApps: archivedApps)
@@ -1626,6 +1662,7 @@ class CXToolCLI {
             print("✅ Created backup snapshot: \(txId)")
         } else {
             print("❌ Failed to create backup snapshot.")
+            exit(1)
         }
     }
 
@@ -1637,7 +1674,7 @@ class CXToolCLI {
                 print("  \(s.transaction_id) | Target: \(s.target) | Action: \(s.action) | Files: \(s.files.count)")
             }
             print("\nUsage: cxtool restore <backup-id>")
-            return
+            exit(2)
         }
 
         print("Restoring snapshot: \(backupId)...")
@@ -1646,6 +1683,7 @@ class CXToolCLI {
             _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/killall"), arguments: ["cfprefsd"])
         } else {
             print("❌ Rollback encountered errors.")
+            exit(1)
         }
     }
 
@@ -1667,7 +1705,7 @@ class CXToolCLI {
         case "show":
             cmdConfig(args: [])
         case "add-bottle-dir":
-            guard args.count > 1 else { print("Usage: cxtool config add-bottle-dir <path>"); return }
+            guard args.count > 1 else { print("Usage: cxtool config add-bottle-dir <path>"); exit(2) }
             let dir = args[1]
             if !cfg.bottle_directories.contains(dir) {
                 cfg.bottle_directories.append(dir)
@@ -1675,7 +1713,7 @@ class CXToolCLI {
                 print("✅ Added bottle directory: \(dir)")
             }
         case "add-library-dir":
-            guard args.count > 1 else { print("Usage: cxtool config add-library-dir <path>"); return }
+            guard args.count > 1 else { print("Usage: cxtool config add-library-dir <path>"); exit(2) }
             let dir = args[1]
             if !cfg.external_game_roots.contains(dir) {
                 cfg.external_game_roots.append(dir)
@@ -1684,6 +1722,7 @@ class CXToolCLI {
             }
         default:
             print("Unknown config command: \(sub)")
+            exit(2)
         }
     }
 

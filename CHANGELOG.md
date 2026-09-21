@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-09-21
+
+### Added
+- **Standardized POSIX Exit Codes**: Deterministic exit code mapping (`0` success, `1` operation error, `2` invalid usage, `3` target not found, `4` ambiguous query, `5` integrity degraded, `6` lock collision) across all commands and disambiguation flows.
+- **CI Portability & Exit Code Test Suite**: GitHub Actions workflow verifying clean-user default config generation under isolated `$HOME` and automated exit code assertions.
+
+### Fixed
+- **Clean-User Default Configuration Portability**: Eliminated hardcoded developer-specific local paths (`/Users/exampleuser` and `/Volumes/ExternalDrive`) from default configuration initialization. Default config now uses generic paths (`crossover_apps_dir: "~/Applications/CrossOver"`, empty initial bottle and external game lists) and respects `$HOME` environment overrides.
+
+### Changed
+- **Policy Invariants Clarification**: Clarified in documentation that pre-execution transaction snapshots and offline storage protection are mandatory core invariants that cannot be disabled.
+- **Icon Geometry & HIG Claims**: Refined wording from strict "Apple HIG 22.37% mandate" to "macOS-style squircle preset inspired by Apple icon conventions" with accurate optical margin specifications.
+- **CrossOver Compatibility Statement**: Relaxed version compatibility claims to specify verified testing against the current installation rather than unverified range assertions.
+- **CLI Documentation**: Documented `cxtool config add-library-dir <path>` in the README command reference.
+
 ## [1.1.2] - 2026-09-21
 
 ### Changed

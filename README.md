@@ -13,8 +13,8 @@
 ## Features
 
 - **Automatic Bottle Discovery**: Automatically locates CrossOver bottles using CrossOver's `BottleDir` user preference, `$CX_BOTTLE_PATH` environment settings, `ManagedBottleDirs`, user configuration (`~/.cxtool.json`), and default system paths.
-- **macOS Squircle Icon Engine**: Automatically converts sharp or square Windows icons into native macOS Big Sur+ squircles adhering to Apple Human Interface Guidelines.
-  - Supports `macos` (default HIG squircle with optical margin), `full-bleed`, `emblem` (custom background fill), and `raw` styles.
+- **macOS Squircle Icon Engine**: Automatically converts sharp or square Windows icons into native macOS-style squircle presets inspired by Apple icon conventions.
+  - Supports `macos` (default squircle with optical margin), `full-bleed`, `emblem` (custom background fill), and `raw` styles.
   - Extracts the highest-resolution bitmap from multi-resolution `.ico` binaries.
   - Generates the complete 10-representation Apple `.iconset` specification and compiles `.icns` binaries via `/usr/bin/iconutil`.
   - Concurrently synchronizes the bottle's internal `desktopdata/cxmenu` hicolor PNG tree.
@@ -27,6 +27,7 @@
   - Every modification takes a pre-execution snapshot with SHA-256 manifests in `~/.cxtool/backups/`.
   - **One-Shot Undo (`cxtool undo`)**: Automatically reverses the most recent operation, restoring moved files and archived apps.
   - **Transaction History (`cxtool history`)**: Displays an audit log of past actions with verification statuses.
+  - **Mandatory Policy**: Transaction snapshots and offline storage protection are core invariants and cannot be disabled.
 - **Concurrency Protection**: Non-blocking POSIX process locking (`flock`) on `~/.cxtool/cxtool.lock` prevents race conditions.
 - **External Storage Safety**: Detects shortcuts located on unmounted external volumes (e.g. `/Volumes/...`) and marks them as `OFFLINE (protected) ⚠️` to prevent accidental pruning or broken state.
 
@@ -42,7 +43,7 @@ Discover  ──▶  Validate  ──▶  Plan  ──▶  Backup (Manifest)  �
 
 - **Non-Destructive Guarantee**: `cxtool delete` only removes CrossOver integration wrappers and launcher registrations. Game directories, executables, and save files are strictly preserved.
 - **Binary Link Safety**: `.lnk` shortcuts are treated as opaque binaries. They are relocated or renamed as whole files without altering internal bytes.
-- **Idempotency**: Running `cxtool repair-all` multiple times inspects corner transparency and padding; if an icon already conforms to Apple guidelines, zero files are modified.
+- **Idempotency**: Running `cxtool repair-all` multiple times inspects corner transparency and padding; if an icon already conforms to macOS squircle standards, zero files are modified.
 
 ---
 
@@ -50,29 +51,29 @@ Discover  ──▶  Validate  ──▶  Plan  ──▶  Backup (Manifest)  �
 
 ```bash
 # Inspection & Diagnostics
-cxtool doctor                         # Comprehensive environment and path audit
-cxtool list [--bottle <name>]         # Tabular overview of all shortcuts and icon status
-cxtool inspect "Game Name"            # Full CrossOver configuration dump for a game
-cxtool verify "Game Name"             # 9-point deep audit of launch chain & shortcut integrity
+cxtool doctor                                       # Comprehensive environment and path audit
+cxtool list [--bottle <name>]                       # Tabular overview of all shortcuts and icon status
+cxtool inspect "Game Name"                          # Full CrossOver configuration dump for a game
+cxtool verify "Game Name"                           # 9-point deep audit of launch chain & shortcut integrity
 
 # Icon Management
 cxtool set-icon "Game Name" /path/to/art.png [--style macos|full-bleed|emblem|raw] [--bg black|white|#hex] [--scale <float>]
-cxtool repair "Game Name"             # Convert a specific game's icon to a macOS squircle
-cxtool repair-all [--dry-run]         # Scan and safely repair all non-squircle icons (idempotent)
+cxtool repair "Game Name"                           # Convert a specific game's icon to a macOS squircle
+cxtool repair-all [--dry-run]                       # Scan and safely repair all non-squircle icons (idempotent)
 
 # Lifecycle Operations
 cxtool rename "Old Name" "New Name" [--dry-run]
 cxtool delete "Game Name" [--dry-run] [--force]
 
 # Safety, History & Backups
-cxtool history                        # View ledger of transactions
-cxtool undo                           # Revert the most recent verified transaction
-cxtool backup [--note "text"]         # Create a manual snapshot of CrossOver menus and icons
-cxtool restore <backup-id>            # Rollback to a specific snapshot ID
-cxtool config [show|add-bottle-dir]   # Manage persistent bottle and search paths
+cxtool history                                      # View ledger of transactions
+cxtool undo                                         # Revert the most recent verified transaction
+cxtool backup [--note "text"]                       # Create a manual snapshot of CrossOver menus and icons
+cxtool restore <backup-id>                          # Rollback to a specific snapshot ID
+cxtool config [show|add-bottle-dir|add-library-dir] # Manage persistent bottle and search paths
 
 # Version
-cxtool --version                      # Print version (1.1.2)
+cxtool --version                                    # Print version (1.1.3)
 ```
 
 ---
@@ -80,7 +81,7 @@ cxtool --version                      # Print version (1.1.2)
 ## Requirements
 
 - **macOS**: macOS 11 (Big Sur) or newer.
-- **CrossOver Mac**: CrossOver 21, 22, 23, or 24.
+- **CrossOver Mac**: Tested against the author's current CrossOver installation. Other recent versions using the same bottle/menu structure may also work.
 - **Build Tools**: Apple Swift compiler (`swiftc`) and `/usr/bin/iconutil` (both standard with Xcode Command Line Tools).
 - **Runtime Dependencies**: **Zero**. `cxtool` compiles to a single native binary using macOS system frameworks (`Foundation`, `AppKit`, `CoreGraphics`, `CryptoKit`).
 
@@ -136,7 +137,7 @@ cxtool repair-all --dry-run
 
 ## Version
 
-Current stable release: **`1.1.2 Stable`**
+Current stable release: **`1.1.3 Stable`**
 
 For architectural details, refer to [Architecture Documentation](docs/architecture.md).  
 For release history, see [CHANGELOG.md](CHANGELOG.md).

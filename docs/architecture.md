@@ -36,14 +36,14 @@ To locate the macOS application wrappers, `cxtool` resolves CrossOver's `Program
 
 ### 2. Shortcut Matching & Disambiguation
 - Matches query strings against macOS bundle names and CrossOver menu items.
-- If a query ambiguously matches multiple shortcuts (e.g., `Spider-Man` matching both *Miles Morales* and *Spider-Man Remastered*), execution halts immediately with exit code 0 and presents a formatted list of candidates.
+- If a query ambiguously matches multiple shortcuts (e.g., `Spider-Man` matching both *Miles Morales* and *Spider-Man Remastered*), execution halts immediately with exit code 4 and presents a formatted list of candidates.
 - Silent partial matching is strictly prohibited for modifying commands.
 
 ### 3. Icon Rendering & Apple `.iconset` Engine
-macOS Big Sur and later mandate a 22.37% squircle corner radius with transparent insets for application icons.
+Provides a macOS-style squircle preset inspired by Apple icon conventions (default 408×408 body with corner radius 91 on a 512×512 canvas, providing standard optical padding).
 - **Image Processing**: Utilizes Apple's native `CoreGraphics` and `AppKit` APIs.
 - **Styles**:
-  - `macos`: Proportional squircle mask with optical margin inset (standard Apple HIG aesthetic).
+  - `macos`: Proportional squircle mask with optical margin inset (standard macOS-style squircle aesthetic inspired by Apple icon conventions).
   - `full-bleed`: Squircle mask extending to the canvas bounds.
   - `emblem`: Scaled artwork placed over a colored or dark squircle tile.
   - `raw`: Direct pass-through without squircle masking.
@@ -62,6 +62,7 @@ macOS Big Sur and later mandate a 22.37% squircle corner radius with transparent
 - Modified files are saved with a content-hash prefix (e.g., `<hash8>_Info.plist`).
 - Operations track file moves (`moved_items`) and wrapper unregistrations (`archived_apps`).
 - Rollback cleanly restores moved items in reverse order, resurrects archived bundles, and overwrites modified files with original bytes.
+- **Mandatory Policy Invariant**: Pre-execution snapshots and manifests are non-configurable invariants; modifying operations cannot bypass transaction logging.
 
 ### 5. Windows Shell Link (`.lnk`) Safety Policy
 - Windows `.lnk` files are binary structures (MS-SHLLINK).
@@ -81,3 +82,21 @@ macOS Big Sur and later mandate a 22.37% squircle corner radius with transparent
 - Inspects target executable paths.
 - If a shortcut points to an unmounted external volume (e.g., `/Volumes/ExternalDrive/...`), `cxtool` flags the target as `OFFLINE (protected) ⚠️`.
 - Offline targets are protected from pruning, cache purges, or automated cleanups.
+- **Mandatory Policy Invariant**: Offline protection is always active and cannot be disabled in configuration.
+
+---
+
+## Standardized Exit Codes
+
+`cxtool` adheres to strict POSIX exit code conventions for clean shell and CI automation:
+
+| Exit Code | Constant / Meaning | Description |
+|---|---|---|
+| `0` | Success | Operation completed normally, `--version`, `--help`, or `doctor` passed. |
+| `1` | Operation Error | Internal operation failed (e.g. filesystem write, rollback failure). |
+| `2` | Invalid Usage | Missing or malformed command-line arguments. |
+| `3` | Target Not Found | Requested shortcut or bottle does not exist. |
+| `4` | Ambiguous Query | Query matched multiple shortcuts; interactive resolution required. |
+| `5` | Integrity Degraded | `cxtool verify` detected broken launch chains or missing components. |
+| `6` | Lock Collision | Process lock (`~/.cxtool/cxtool.lock`) held by another active instance. |
+
