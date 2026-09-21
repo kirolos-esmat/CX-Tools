@@ -1,5 +1,9 @@
 # CX-Tools
 
+[![CI](https://github.com/kirolos-esmat/CX-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/kirolos-esmat/CX-Tools/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/kirolos-esmat/CX-Tools)](https://github.com/kirolos-esmat/CX-Tools/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 > **A transaction-safe CrossOver Mac bottle shortcut and icon manager.**
 
 `cxtool` is a native, zero-dependency Swift CLI utility designed to manage, inspect, repair, rename, and safely unregister CrossOver Mac game shortcuts and application icons with cryptographic transaction snapshots and instant rollback.
