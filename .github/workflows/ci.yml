@@ -38,10 +38,11 @@ jobs:
           TMP_HOME="$(mktemp -d)"
           HOME="$TMP_HOME" ./cxtool doctor
           test -f "$TMP_HOME/.cxtool.json"
-          if grep -qE "exampleuser|ExternalDrive" "$TMP_HOME/.cxtool.json"; then
-            echo "❌ Leaked personal paths in default config!"
-            exit 1
-          fi
+          jq -e '
+            .bottle_directories == [] and
+            .external_game_roots == [] and
+            .crossover_apps_dir == "~/Applications/CrossOver"
+          ' "$TMP_HOME/.cxtool.json"
           echo "✅ Default config is generic and clean."
           rm -rf "$TMP_HOME"
 

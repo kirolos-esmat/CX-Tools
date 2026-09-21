@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI Portability & Exit Code Test Suite**: GitHub Actions workflow verifying clean-user default config generation under isolated `$HOME` and automated exit code assertions.
 
 ### Fixed
-- **Clean-User Default Configuration Portability**: Eliminated hardcoded developer-specific local paths (`/Users/exampleuser` and `/Volumes/ExternalDrive`) from default configuration initialization. Default config now uses generic paths (`crossover_apps_dir: "~/Applications/CrossOver"`, empty initial bottle and external game lists) and respects `$HOME` environment overrides.
+- **Clean-User Default Configuration Portability**: Eliminated hardcoded developer-specific local paths from default configuration initialization. Default config now uses generic paths (`crossover_apps_dir: "~/Applications/CrossOver"`, empty initial bottle and external game lists) and respects `$HOME` environment overrides.
 
 ### Changed
 - **Policy Invariants Clarification**: Clarified in documentation that pre-execution transaction snapshots and offline storage protection are mandatory core invariants that cannot be disabled.
