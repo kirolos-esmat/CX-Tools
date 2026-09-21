@@ -74,15 +74,32 @@ Provides a macOS-style squircle preset inspired by Apple icon conventions (defau
 - **Delete**: Unregisters the shortcut from `cxmenu.conf`, removes the launcher script and `.lnk` shortcuts, and moves the macOS `.app` bundle into the transaction backup archive.
 - **Safety Guarantee**: Game binaries, Wine prefixes, drive_c program files, and save games are **never** removed or modified.
 
-### 7. Process Locking
+### 7. Process Locking (Selective Locking Model)
 - Utilizes non-blocking POSIX `flock` on `~/.cxtool/cxtool.lock`.
-- Prevents concurrent executions, automated script collisions, or simultaneous terminal invocations from corrupting CrossOver configuration files.
+- **Read-Only Operations**: Commands that only inspect state (`status`, `list`, `inspect`, `verify`, `history`, `backups list`, `completion`, `__complete-*`) **do not acquire** the mutation lock, enabling concurrent inspection and instantaneous shell completion.
+- **Mutation Operations**: Commands that modify state (`set-icon`, `repair`, `repair-all`, `rename`, `delete`, `undo`, `restore`, `backup`, `backups prune`, `config add-*`) acquire an exclusive non-blocking lock to prevent race conditions.
 
 ### 8. External Storage & Offline Safety
 - Inspects target executable paths.
 - If a shortcut points to an unmounted external volume (e.g., `/Volumes/ExternalDrive/...`), `cxtool` flags the target as `OFFLINE (protected) ⚠️`.
 - Offline targets are protected from pruning, cache purges, or automated cleanups.
 - **Mandatory Policy Invariant**: Offline protection is always active and cannot be disabled in configuration.
+
+### 9. Backup Retention Policy & Pruning Guards
+The `cxtool backups prune` subsystem enforces multi-tiered retention invariants to prevent accidental loss of recovery points:
+1. **Active Undo Snapshot Protection**: The snapshot currently referenced by `cxtool undo` (`snapshots.first(where: { $0.undone != true })`) is **strictly immune** from pruning regardless of age or count arguments.
+2. **Terminal State Restriction**: Only snapshots in a terminal verified or undone state (`verified: true` or `undone: true`) are eligible for pruning. Incomplete, pending, or interrupted transaction snapshots are preserved for investigation.
+3. **Dual Safety Filter**: A candidate snapshot is pruned only if it satisfies **both** conditions simultaneously:
+   - Positioned outside the newest `N` snapshots (`index >= keep`, default 10).
+   - Older than `D` calendar days (`age >= days`, default 30).
+4. **Interactive Confirmation & Dry-Run**: Pruning previews candidates and projected disk space reclamation. `--dry-run` guarantees zero disk writes; `--force` bypasses user confirmation without waiving safety invariants.
+
+### 10. Machine-Readable JSON Schema (`schema_version: 1`)
+All read and inspection commands (`status`, `list`, `inspect`, `verify`, `history`, `backups`) support the `--json` flag:
+- Strictly valid JSON emitted to `stdout` with all diagnostic logs directed to `stderr`.
+- Enforces uniform `snake_case` key conventions across all structures.
+- Every payload includes top-level `"schema_version": 1`.
+- Structured error handling: on non-zero exit codes (`2`, `3`, `4`, `5`, `6`), `cxtool` emits a structured JSON error object containing the numeric code, error type string, descriptive message, and candidate matches if applicable.
 
 ---
 

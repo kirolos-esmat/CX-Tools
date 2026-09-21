@@ -23,7 +23,7 @@ jobs:
       - name: Verify Version
         run: |
           ./cxtool --version
-          test "$(./cxtool --version)" = "cxtool 1.1.3"
+          test "$(./cxtool --version)" = "cxtool 1.2.0"
 
       - name: Verify CLI Help
         run: |
@@ -45,19 +45,92 @@ jobs:
           echo "✅ Default config is generic and clean."
           rm -rf "$TMP_HOME"
 
-      - name: Verify CLI Exit Codes
+      - name: Verify Isolated Mock Fixture & JSON Suite
         run: |
+          TMP_HOME="$(mktemp -d)"
+          export HOME="$TMP_HOME"
+
+          # 1. Create mock macOS wrapper bundle
+          mkdir -p "$TMP_HOME/Applications/CrossOver/Test Game.app/Contents/Resources"
+          cp /System/Library/CoreServices/Finder.app/Contents/Resources/Finder.icns "$TMP_HOME/Applications/CrossOver/Test Game.app/Contents/Resources/CrossOverHelper.icns"
+
+          # 2. Create mock bottle filesystem structure
+          mkdir -p "$TMP_HOME/Bottles/TestBottle/drive_c/users/crossover/AppData/Roaming/Microsoft/Windows/Start Menu"
+          touch "$TMP_HOME/Bottles/TestBottle/drive_c/users/crossover/AppData/Roaming/Microsoft/Windows/Start Menu/Test Game.lnk"
+
+          mkdir -p "$TMP_HOME/Bottles/TestBottle/desktopdata/cxmenu/StartMenu.C^5E3A_users_crossover_AppData_Roaming_Microsoft_Windows_Start^2BMenu"
+          LAUNCHER="$TMP_HOME/Bottles/TestBottle/desktopdata/cxmenu/StartMenu.C^5E3A_users_crossover_AppData_Roaming_Microsoft_Windows_Start^2BMenu/Test+Game.lnk"
+          cat << 'EOF' > "$LAUNCHER"
+          #!/bin/sh
+          /usr/bin/wine "C:\Games\test.exe"
+          EOF
+          chmod +x "$LAUNCHER"
+
+          cat << EOF > "$TMP_HOME/Applications/CrossOver/Test Game.app/Contents/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>Test Game</string>
+              <key>CXHelperAppBottleName</key>
+              <string>TestBottle</string>
+              <key>CrossOverHelperMenuPath</key>
+              <string>StartMenu.C^3A_users_crossover_AppData_Roaming_Microsoft_Windows_Start+Menu/Test Game.lnk</string>
+              <key>CrossOverHelperCommand</key>
+              <string>"$LAUNCHER"</string>
+          </dict>
+          </plist>
+          EOF
+
+          cat << 'EOF' > "$TMP_HOME/Bottles/TestBottle/cxbottle.conf"
+          [Bottle]
+          Description=Test Bottle
+          EOF
+
+          cat << 'EOF' > "$TMP_HOME/Bottles/TestBottle/cxmenu.conf"
+          [StartMenu.C^3A_users_crossover_AppData_Roaming_Microsoft_Windows_Start+Menu/Test Game.lnk]
+          Shortcut=1
+          Icon=icon_TestGame
+          Mode=default
+          EOF
+
+          # 3. Configure cxtool with isolated mock paths
+          cat << EOF > "$TMP_HOME/.cxtool.json"
+          {
+            "bottle_directories": ["$TMP_HOME/Bottles"],
+            "auto_detect_crossover_bottles": false,
+            "crossover_apps_dir": "$TMP_HOME/Applications/CrossOver",
+            "external_game_roots": [],
+            "default_style": "macos"
+          }
+          EOF
+
+          # 4. Assert structured JSON across all inspection commands
+          ./cxtool status --json | jq -e '.schema_version == 1 and .command == "status" and .inventory.shortcuts_count == 1'
+          ./cxtool list --json | jq -e '.schema_version == 1 and .command == "list" and .total == 1 and .shortcuts[0].name == "Test Game"'
+          ./cxtool inspect "Test Game" --json | jq -e '.schema_version == 1 and .command == "inspect" and .shortcut.bottle_name == "TestBottle"'
+          ./cxtool verify "Test Game" --json | jq -e '.schema_version == 1 and .command == "verify" and .healthy == true'
+          ./cxtool history --json | jq -e '.schema_version == 1 and .command == "history"'
+          ./cxtool backups --json | jq -e '.schema_version == 1 and .command == "backups"'
+          ./cxtool backups prune --keep 5 --dry-run --json | jq -e '.schema_version == 1 and .dry_run == true and .command == "backups_prune"'
+
+          # 5. Assert CLI Exit Codes & Structured JSON Errors
           set +e
-          # Exit code 0: Success / Help / Version
-          ./cxtool --version > /dev/null
-          test $? -eq 0 || (echo "Failed exit code 0" && exit 1)
+          ./cxtool inspect --json > /tmp/err2.json
+          test $? -eq 2 && jq -e '.schema_version == 1 and .error.code == 2 and .error.type == "invalid_usage"' /tmp/err2.json
 
-          # Exit code 2: Usage / missing required argument
-          ./cxtool inspect > /dev/null 2>&1
-          test $? -eq 2 || (echo "Failed exit code 2" && exit 1)
-
-          # Exit code 3: Target not found
-          ./cxtool inspect "DefinitelyNonExistentGameXYZ123" > /dev/null 2>&1
-          test $? -eq 3 || (echo "Failed exit code 3" && exit 1)
+          ./cxtool inspect "NonExistent" --json > /tmp/err3.json
+          test $? -eq 3 && jq -e '.schema_version == 1 and .error.code == 3 and .error.type == "target_not_found"' /tmp/err3.json
           set -e
-          echo "✅ Exit code assertions passed."
+
+          rm -rf "$TMP_HOME" /tmp/err2.json /tmp/err3.json
+          echo "✅ All isolated JSON assertions passed."
+
+      - name: Verify Zsh Shell Completion Drift & Syntax
+        run: |
+          ./cxtool completion zsh > /tmp/_cxtool_ci
+          diff -u completions/_cxtool /tmp/_cxtool_ci
+          zsh -n /tmp/_cxtool_ci
+          rm /tmp/_cxtool_ci
+          echo "✅ Zsh completion script is syntax-valid and matches repository file identically."

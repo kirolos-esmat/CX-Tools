@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-21
+
+### Added
+- **Status Dashboard (`cxtool status`)**: System overview reporting CrossOver environment paths, active bottle inventory, shortcut counts, squircle icon compliance percentage, offline/online external roots, total snapshot disk consumption, active undo availability, last transaction status, and process lock health.
+- **Machine-Readable JSON Mode (`--json`)**: Uniform `snake_case` JSON output with `"schema_version": 1` across `status`, `list`, `inspect`, `verify`, and `history`.
+- **Structured JSON Errors**: Standardized JSON error schema emitted on exit codes 2 (invalid usage), 3 (not found), 4 (ambiguous target), 5 (verification degraded), and 6 (lock busy) when `--json` is active.
+- **Dedicated Backup Inspection & Pruning (`cxtool backups [list|prune]`)**:
+  - `list`: Inspect stored snapshots with recursive folder sizes, file counts, and active undo target identification.
+  - `prune`: Safe retention cleanup with dual-guard protection (`--keep <N>` and `--days <N>`).
+  - **Invariants**: Active undo snapshot is permanently guarded from deletion; only terminal snapshots (`verified` or `undone`) are eligible for pruning. Supports interactive confirmation, `--dry-run`, `--force`, and `--json`.
+- **Native Zsh Shell Completion (`cxtool completion zsh`)**: Embedded completion generator and checked-in `completions/_cxtool` providing autocompletion for all subcommands, options, and dynamic resolution of game shortcut and bottle names.
+- **Fast Read-Only Completion Helpers (`cxtool __complete-shortcuts`, `cxtool __complete-bottles`)**: Lightweight, lock-free discovery routines designed for shell completions.
+
+### Changed
+- **Selective Process Locking**: Granular lock policy ensuring read-only commands (`status`, `list`, `inspect`, `verify`, `history`, `backups list`, `completion`) never acquire the mutation lock. Mutation commands (`set-icon`, `repair`, `rename`, `delete`, `undo`, `restore`, `backup`, `backups prune`, `config add-*`) acquire exclusive non-blocking `flock`.
+
 ## [1.1.3] - 2026-09-21
 
 ### Added

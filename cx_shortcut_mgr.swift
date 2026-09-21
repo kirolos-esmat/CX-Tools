@@ -40,7 +40,7 @@ struct Config: Codable {
     )
 }
 
-struct ShortcutInfo {
+struct ShortcutInfo: Codable {
     let name: String
     let bottleName: String
     let appPath: String?
@@ -53,6 +53,206 @@ struct ShortcutInfo {
     let isSquircle: Bool
     let cornerAlpha: CGFloat
     let isCrossoverCog: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case bottleName = "bottle_name"
+        case appPath = "app_path"
+        case menuPath = "menu_path"
+        case commandPath = "command_path"
+        case iconTag = "icon_tag"
+        case targetExe = "target_exe"
+        case externalDependency = "external_dependency"
+        case isOffline = "is_offline"
+        case isSquircle = "is_squircle"
+        case cornerAlpha = "corner_alpha"
+        case isCrossoverCog = "is_crossover_cog"
+    }
+}
+
+struct ListReport: Codable {
+    var schema_version: Int = 1
+    var command: String = "list"
+    let total: Int
+    let shortcuts: [ShortcutInfo]
+}
+
+struct InspectReport: Codable {
+    var schema_version: Int = 1
+    var command: String = "inspect"
+    let shortcut: ShortcutInfo
+    let icns_file: String?
+    let icns_sha256: String?
+}
+
+struct VerifyChecks: Codable {
+    let wrapper_exists: Bool
+    let plist_ok: Bool
+    let bottle_ok: Bool
+    let cxmenu_ok: Bool
+    let launcher_ok: Bool
+    let windows_shortcut_ok: Bool
+    let icon_squircle_ok: Bool
+    let launch_chain_valid: Bool
+}
+
+struct VerifyReport: Codable {
+    var schema_version: Int = 1
+    var command: String = "verify"
+    let target: String
+    let bottle: String
+    let healthy: Bool
+    let overall_status: String
+    let target_executable_status: String
+    let checks: VerifyChecks
+}
+
+struct HistoryReport: Codable {
+    var schema_version: Int = 1
+    var command: String = "history"
+    let total: Int
+    let transactions: [TransactionManifest]
+}
+
+struct EnvironmentStatus: Codable {
+    let crossover_detected: Bool
+    let bottle_roots: [String]
+    let applications_dir: String
+}
+
+struct InventoryStatus: Codable {
+    let bottles_count: Int
+    let bottles: [String]
+    let shortcuts_count: Int
+    let healthy_shortcuts_count: Int
+    let icon_compliant_count: Int
+    let icon_compliance_percent: Double
+}
+
+struct StorageStatus: Codable {
+    let external_roots_online: [String]
+    let external_roots_offline: [String]
+}
+
+struct LastTransactionSummary: Codable {
+    let transaction_id: String
+    let action: String
+    let target: String
+    let bottle: String
+    let created_at: String
+    let status: String
+}
+
+struct SafetyStatus: Codable {
+    let snapshots_count: Int
+    let backup_disk_bytes: Int64
+    let backup_disk_human: String
+    let undo_available: Bool
+    let last_transaction: LastTransactionSummary?
+    let mutation_lock: String
+}
+
+struct StatusReport: Codable {
+    var schema_version: Int = 1
+    var command: String = "status"
+    let environment: EnvironmentStatus
+    let inventory: InventoryStatus
+    let storage: StorageStatus
+    let safety: SafetyStatus
+}
+
+struct BackupSnapshotItem: Codable {
+    let transaction_id: String
+    let action: String
+    let target: String
+    let bottle: String
+    let created_at: String
+    let touched_files_count: Int
+    let disk_bytes: Int64
+    let disk_human: String
+    let status: String
+    let is_active_undo: Bool
+}
+
+struct BackupsListReport: Codable {
+    var schema_version: Int = 1
+    var command: String = "backups"
+    let total_snapshots: Int
+    let total_disk_bytes: Int64
+    let total_disk_human: String
+    let snapshots: [BackupSnapshotItem]
+}
+
+struct PruneReport: Codable {
+    var schema_version: Int = 1
+    var command: String = "backups_prune"
+    let dry_run: Bool
+    let pruned_count: Int
+    let reclaimed_bytes: Int64
+    let reclaimed_human: String
+    let preserved_count: Int
+    let pruned_snapshots: [String]
+}
+
+struct CXErrorDetail: Codable {
+    let code: Int
+    let type: String
+    let message: String
+    let matches: [String]?
+}
+
+struct CXErrorPayload: Codable {
+    var schema_version: Int = 1
+    let error: CXErrorDetail
+}
+
+func formatBytes(_ bytes: Int64) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.allowedUnits = [.useAll]
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: bytes)
+}
+
+func recursiveDirectorySize(at url: URL) -> Int64 {
+    let fm = FileManager.default
+    guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: [.skipsHiddenFiles]) else {
+        return 0
+    }
+    var total: Int64 = 0
+    for case let fileURL as URL in enumerator {
+        if let resourceValues = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey]),
+           resourceValues.isDirectory == false {
+            total += Int64(resourceValues.fileSize ?? 0)
+        }
+    }
+    return total
+}
+
+func printJSON<T: Encodable>(_ value: T) {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    if let data = try? encoder.encode(value), let str = String(data: data, encoding: .utf8) {
+        print(str)
+    }
+}
+
+func exitWithError(code: Int32, type: String, message: String, matches: [String]? = nil, isJSON: Bool) -> Never {
+    if isJSON {
+        let payload = CXErrorPayload(error: CXErrorDetail(code: Int(code), type: type, message: message, matches: matches))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(payload), let jsonStr = String(data: data, encoding: .utf8) {
+            print(jsonStr)
+        }
+    } else {
+        FileHandle.standardError.write(Data("❌ \(message)\n".utf8))
+        if let matches = matches {
+            for m in matches {
+                FileHandle.standardError.write(Data("  - \(m)\n".utf8))
+            }
+        }
+    }
+    exit(code)
 }
 
 struct FileHashRecord: Codable {
@@ -78,6 +278,148 @@ struct TransactionManifest: Codable {
     var moved_items: [MovedItemRecord]?
     var archived_apps: [MovedItemRecord]?
 }
+
+let cxtoolZshCompletionScript = #"""
+#compdef cxtool
+
+_cxtool() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    local -a commands=(
+        'status:System & shortcut health dashboard'
+        'list:List all CrossOver shortcuts and icon status'
+        'inspect:Inspect full configuration for a game shortcut'
+        'verify:Audit launch chain and shortcut integrity'
+        'set-icon:Update game icon to macOS squircle preset'
+        'repair:Convert specific game icon to squircle'
+        'repair-all:Scan and safely repair all non-squircle icons'
+        'rename:Safely rename shortcut across macOS wrapper and bottle'
+        'delete:Safely unregister shortcut (never deletes game data)'
+        'history:Display ledger of past transactions'
+        'undo:Revert the most recent verified transaction'
+        'backup:Create a manual snapshot of CrossOver menus and icons'
+        'restore:Rollback to a previously saved snapshot'
+        'backups:Inspect and prune transaction snapshots'
+        'config:Manage persistent paths and preferences'
+        'doctor:Perform environment and path diagnostics'
+        'completion:Generate shell completion script'
+    )
+
+    _arguments -C \
+        '1: :->command' \
+        '*:: :->args'
+
+    case $state in
+        command)
+            _describe -t commands 'cxtool command' commands
+            ;;
+        args)
+            case $words[1] in
+                status)
+                    _arguments \
+                        '--json[Output structured machine-readable JSON]'
+                    ;;
+                list)
+                    _arguments \
+                        '--bottle[Filter shortcuts by bottle name]:bottle:->bottles' \
+                        '--json[Output structured machine-readable JSON]' \
+                        '--verbose[Show internal paths]'
+                    ;;
+                inspect|verify|repair)
+                    _arguments \
+                        '1:shortcut:->shortcuts' \
+                        '--json[Output structured machine-readable JSON]' \
+                        '--dry-run[Preview changes without modifying disk]'
+                    ;;
+                set-icon)
+                    _arguments \
+                        '1:shortcut:->shortcuts' \
+                        '2:image file:_files -g "*.png *.jpg *.jpeg *.ico *.icns"' \
+                        '--style[Icon rendering style]:style:(macos full-bleed emblem raw)' \
+                        '--bg[Background fill color]:color:(black white #1a1a1a #000000 #ffffff)' \
+                        '--scale[Optical scaling factor]:scale:(0.75 0.80 0.85 0.90 1.0)'
+                    ;;
+                rename)
+                    _arguments \
+                        '1:shortcut:->shortcuts' \
+                        '2:new name:' \
+                        '--dry-run[Preview changes without modifying disk]'
+                    ;;
+                delete)
+                    _arguments \
+                        '1:shortcut:->shortcuts' \
+                        '--dry-run[Preview changes without modifying disk]' \
+                        '--force[Bypass confirmation prompt]'
+                    ;;
+                backups)
+                    local -a backup_subcommands=(
+                        'list:List all stored snapshots with disk usage'
+                        'prune:Prune old snapshots using retention policy'
+                    )
+                    if (( CURRENT == 2 )); then
+                        _describe -t backup_subcommands 'backups command' backup_subcommands
+                    else
+                        case $words[2] in
+                            prune)
+                                _arguments \
+                                    '--keep[Number of newest snapshots to retain (default 10)]:(5 10 20)' \
+                                    '--days[Age threshold in days for pruning (default 30)]:(7 14 30 60 90)' \
+                                    '--dry-run[Preview snapshots to be deleted without modifying disk]' \
+                                    '--force[Bypass interactive confirmation prompt]' \
+                                    '--json[Output structured machine-readable JSON]'
+                                ;;
+                            list)
+                                _arguments \
+                                    '--json[Output structured machine-readable JSON]'
+                                ;;
+                        esac
+                    fi
+                    ;;
+                restore)
+                    _arguments \
+                        '1:snapshot id:'
+                    ;;
+                backup)
+                    _arguments \
+                        '--note[Optional note describing backup]:note:'
+                    ;;
+                config)
+                    local -a config_subcommands=(
+                        'show:Display active configuration'
+                        'add-bottle-dir:Add custom bottle root path'
+                        'add-library-dir:Add external game library path'
+                    )
+                    _describe -t config_subcommands 'config command' config_subcommands
+                    ;;
+                completion)
+                    _arguments \
+                        '1:shell:(zsh)'
+                    ;;
+                history)
+                    _arguments \
+                        '--json[Output structured machine-readable JSON]'
+                    ;;
+            esac
+            ;;
+    esac
+
+    case $state in
+        shortcuts)
+            local -a shortcuts
+            shortcuts=("${(@f)$(cxtool __complete-shortcuts 2>/dev/null)}")
+            _describe -t shortcuts 'game shortcut' shortcuts
+            ;;
+        bottles)
+            local -a bottles
+            bottles=("${(@f)$(cxtool __complete-bottles 2>/dev/null)}")
+            _describe -t bottles 'crossover bottle' bottles
+            ;;
+    esac
+}
+
+_cxtool "$@"
+"""#
 
 func currentUserHomeDirectory() -> URL {
     if let envHome = ProcessInfo.processInfo.environment["HOME"], !envHome.isEmpty {
@@ -118,6 +460,19 @@ class ProcessLock {
             close(lockFd)
             lockFd = -1
         }
+    }
+
+    func isLocked() -> Bool {
+        let fd = open(lockPath, O_CREAT | O_RDWR, 0o600)
+        guard fd >= 0 else { return false }
+        let rc = flock(fd, LOCK_EX | LOCK_NB)
+        if rc != 0 {
+            close(fd)
+            return true
+        }
+        flock(fd, LOCK_UN)
+        close(fd)
+        return false
     }
 }
 
@@ -225,24 +580,26 @@ class DiscoveryEngine {
     }
 
     func discoverProgramsFolder() -> (path: String, verified: Bool) {
-        let prefDomain = "com.codeweavers.CrossOver"
-        let defaults = UserDefaults.standard.persistentDomain(forName: prefDomain) ?? [:]
+        if config.auto_detect_crossover_bottles {
+            let prefDomain = "com.codeweavers.CrossOver"
+            let defaults = UserDefaults.standard.persistentDomain(forName: prefDomain) ?? [:]
 
-        if let bookmarkData = defaults["ProgramsFolderBookmark"] as? Data {
-            var isStale = false
-            let savedStderr = dup(STDERR_FILENO)
-            let devNull = open("/dev/null", O_WRONLY)
-            dup2(devNull, STDERR_FILENO)
-            close(devNull)
+            if let bookmarkData = defaults["ProgramsFolderBookmark"] as? Data {
+                var isStale = false
+                let savedStderr = dup(STDERR_FILENO)
+                let devNull = open("/dev/null", O_WRONLY)
+                dup2(devNull, STDERR_FILENO)
+                close(devNull)
 
-            let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &isStale)
+                let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &isStale)
 
-            fflush(stderr)
-            dup2(savedStderr, STDERR_FILENO)
-            close(savedStderr)
+                fflush(stderr)
+                dup2(savedStderr, STDERR_FILENO)
+                close(savedStderr)
 
-            if let resolved = url {
-                return (resolved.path, true)
+                if let resolved = url {
+                    return (resolved.path, true)
+                }
             }
         }
         let fallback = NSString(string: config.crossover_apps_dir).expandingTildeInPath
@@ -439,15 +796,8 @@ class DiscoveryEngine {
         if matches.count == 1 {
             return .success(matches.first!)
         } else if matches.count > 1 {
-            print("❌ Ambiguous query \"\(query)\". Matches multiple games:")
-            for m in matches {
-                print("  • \(m.name) (Bottle: \(m.bottleName))")
-            }
-            print("Please specify the exact full title.")
             return .ambiguous(matches)
         } else {
-            print("❌ No game shortcut found matching \"\(query)\".")
-            print("Run 'cxtool list' to view all available shortcuts.")
             return .notFound
         }
     }
@@ -823,6 +1173,7 @@ class TransactionManager {
 class CXToolCLI {
     let config = ConfigManager.shared.load()
     let discovery: DiscoveryEngine
+    var isJSON: Bool = false
 
     init() {
         self.discovery = DiscoveryEngine(config: config)
@@ -832,31 +1183,76 @@ class CXToolCLI {
         switch discovery.resolveShortcutDetailed(query: query, in: shortcuts) {
         case .success(let item):
             return item
-        case .ambiguous:
-            exit(4)
+        case .ambiguous(let matches):
+            let matchDescriptions = matches.map { "\($0.name) (Bottle: \($0.bottleName))" }
+            exitWithError(
+                code: 4,
+                type: "ambiguous_target",
+                message: "Ambiguous query \"\(query)\". Matches multiple shortcuts.",
+                matches: matchDescriptions,
+                isJSON: isJSON
+            )
         case .notFound:
-            exit(3)
+            exitWithError(
+                code: 3,
+                type: "target_not_found",
+                message: "No shortcut found matching \"\(query)\".",
+                matches: nil,
+                isJSON: isJSON
+            )
         }
     }
 
     func run(args: [String]) {
+        self.isJSON = args.contains("--json")
+
         guard args.count > 1 else {
+            if isJSON {
+                exitWithError(code: 2, type: "missing_command", message: "No command specified. Run 'cxtool --help' for usage.", isJSON: true)
+            }
             printUsage()
             exit(2)
         }
 
-        // Acquire process lock
-        guard ProcessLock.shared.acquire() else {
-            print("❌ Another cxtool process is currently running.")
-            print("If no process is running, remove ~/.cxtool/cxtool.lock to clear the lock.")
-            exit(6)
-        }
-        defer { ProcessLock.shared.release() }
-
         let command = args[1]
         let remaining = Array(args.dropFirst(2))
 
+        // Fast completion helpers - 100% read-only, zero lock, zero banners, fast exit
+        if command == "__complete-shortcuts" {
+            cmdCompleteShortcuts()
+            return
+        }
+        if command == "__complete-bottles" {
+            cmdCompleteBottles()
+            return
+        }
+
+        // Determine if command mutates state
+        let mutatingCommands: Set<String> = [
+            "set-icon", "repair", "repair-all", "rename", "delete", "undo", "restore", "backup"
+        ]
+        var needsLock = mutatingCommands.contains(command)
+        if command == "backups" && remaining.first == "prune" {
+            needsLock = true
+        }
+        if command == "config" && remaining.count >= 1 && (remaining[0] == "add-bottle-dir" || remaining[0] == "add-library-dir") {
+            needsLock = true
+        }
+
+        if needsLock {
+            guard ProcessLock.shared.acquire() else {
+                exitWithError(code: 6, type: "lock_collision", message: "Another cxtool process is currently running (~/.cxtool/cxtool.lock held).", isJSON: isJSON)
+            }
+        }
+        defer {
+            if needsLock {
+                ProcessLock.shared.release()
+            }
+        }
+
         switch command {
+        case "status":
+            cmdStatus(args: remaining)
         case "list":
             cmdList(args: remaining)
         case "doctor":
@@ -876,34 +1272,37 @@ class CXToolCLI {
         case "delete":
             cmdDelete(args: remaining)
         case "history":
-            cmdHistory()
+            cmdHistory(args: remaining)
         case "undo":
             cmdUndo()
         case "backup":
             cmdBackup(args: remaining)
         case "restore":
             cmdRestore(args: remaining)
+        case "backups":
+            cmdBackups(args: remaining)
         case "config":
             cmdConfig(args: remaining)
+        case "completion":
+            cmdCompletion(args: remaining)
         case "version", "--version", "-v":
-            print("cxtool 1.1.3")
+            print("cxtool 1.2.0")
         case "help", "--help", "-h":
             printUsage()
         default:
-            print("Unknown command: \(command)")
-            printUsage()
-            exit(2)
+            exitWithError(code: 2, type: "unknown_command", message: "Unknown command '\(command)'. Run 'cxtool --help' for usage.", isJSON: isJSON)
         }
     }
 
     func printUsage() {
         print("""
-        cxtool - CrossOver Mac Bottle Shortcut & Icon Manager (V1.1.3 Stable)
+        cxtool - CrossOver Mac Bottle Shortcut & Icon Manager (V1.2.0 Stable)
 
         USAGE:
           cxtool <command> [options]
 
         INSPECTION & DIAGNOSTICS:
+          status                       System, inventory, storage, and safety health dashboard
           list                         List all game shortcuts, bottles, and icon status
           doctor                       Perform comprehensive CrossOver environment health check
           inspect <Game Name>          Display complete CrossOver state for a specific game
@@ -918,20 +1317,27 @@ class CXToolCLI {
           rename <Old Name> <New Name> Safely rename shortcut across macOS wrapper & bottle
           delete <Game Name>           Safely unregister shortcut (NEVER deletes game data)
 
-        SAFETY & HISTORY:
+        SAFETY, HISTORY & BACKUPS:
           history                      Display log of past transactions
           undo                         Revert the most recent verified transaction
           backup [--note <text>]       Create a manual snapshot of CrossOver menus and icons
           restore <backup-id>          Rollback to a previously saved snapshot
+          backups [list|prune]         Inspect and prune snapshot backups (--keep, --days)
           config [show|add-bottle-dir|add-library-dir] Manage persistent paths
 
+        SHELL COMPLETION:
+          completion zsh               Generate native Zsh shell completion script
+
         OPTIONS:
+          --json                       Output structured machine-readable JSON (schema_version: 1)
           --dry-run                    Preview changes without writing to disk
           --force                      Bypass confirmation prompts
           --bottle <name>              Filter or target a specific bottle
           --style <macos|full-bleed|emblem|raw> Icon rendering style preset
           --bg <black|white|#hex>      Background fill color for emblem styles
           --scale <float>              Optical scaling factor for art (default 1.0 or 0.85)
+          --keep <N>                   Number of newest snapshots to retain in prune (default: 10)
+          --days <N>                   Age threshold in days for pruning (default: 30)
           --verbose                    Show internal paths and diagnostic details
         """)
     }
@@ -947,6 +1353,12 @@ class CXToolCLI {
                 return s.bottleName.localizedCaseInsensitiveContains(b)
             }
             return true
+        }
+
+        if self.isJSON {
+            let report = ListReport(total: filtered.count, shortcuts: filtered)
+            printJSON(report)
+            return
         }
 
         print(String(format: "%-35@ | %-12@ | %-16@ | %-12@", "Game / Shortcut Name", "Bottle", "Icon Style", "Drive Status"))
@@ -1024,13 +1436,27 @@ class CXToolCLI {
     // MARK: - cmdInspect
 
     func cmdInspect(args: [String]) {
-        guard let name = args.first, !name.hasPrefix("--") else {
-            print("Usage: cxtool inspect \"Game Name\"")
-            exit(2)
+        let nonFlagArgs = args.filter { !$0.hasPrefix("--") }
+        guard let name = nonFlagArgs.first else {
+            exitWithError(code: 2, type: "invalid_usage", message: "Usage: cxtool inspect \"Game Name\" [--json]", isJSON: self.isJSON)
         }
 
         let shortcuts = discovery.scanAllShortcuts()
         let item = resolveOrExit(query: name, in: shortcuts)
+
+        var icnsPath: String? = nil
+        var icnsSHA: String? = nil
+        if let app = item.appPath {
+            let icns = "\(app)/Contents/Resources/CrossOverHelper.icns"
+            icnsPath = icns
+            icnsSHA = computeSHA256(for: icns)
+        }
+
+        if self.isJSON {
+            let report = InspectReport(shortcut: item, icns_file: icnsPath, icns_sha256: icnsSHA)
+            printJSON(report)
+            return
+        }
 
         print("=== State Inspection: \(item.name) ===")
         print("Bottle:                  \(item.bottleName)")
@@ -1045,29 +1471,26 @@ class CXToolCLI {
         print("Corner Alpha:            \(item.cornerAlpha)")
         print("Is CrossOver Gear Icon:  \(item.isCrossoverCog ? "YES ⚙️" : "NO")")
 
-        if let app = item.appPath {
-            let icns = "\(app)/Contents/Resources/CrossOverHelper.icns"
-            print("ICNS File:               \(icns) (SHA256: \(computeSHA256(for: icns).prefix(12))...)")
+        if let icns = icnsPath, let sha = icnsSHA {
+            print("ICNS File:               \(icns) (SHA256: \(sha.prefix(12))...)")
         }
     }
 
     // MARK: - cmdVerify (V1.1.1)
 
     func cmdVerify(args: [String]) {
-        guard let name = args.first, !name.hasPrefix("--") else {
-            print("Usage: cxtool verify \"Game Name\"")
-            exit(2)
+        let nonFlagArgs = args.filter { !$0.hasPrefix("--") }
+        guard let name = nonFlagArgs.first else {
+            exitWithError(code: 2, type: "invalid_usage", message: "Usage: cxtool verify \"Game Name\" [--json]", isJSON: self.isJSON)
         }
 
         let shortcuts = discovery.scanAllShortcuts()
         let item = resolveOrExit(query: name, in: shortcuts)
 
         let fm = FileManager.default
-        print("=== Launch Chain & Integrity Audit: [\(item.name)] ===")
 
         // 1. Wrapper exists
         let wrapperExists = item.appPath.map { fm.fileExists(atPath: $0) } ?? false
-        print(String(format: "  %-30@ : %@", "Wrapper exists", wrapperExists ? "OK ✅" : "MISSING ❌"))
 
         // 2. Info.plist
         var plistOK = false
@@ -1078,12 +1501,10 @@ class CXToolCLI {
                 plistOK = true
             }
         }
-        print(String(format: "  %-30@ : %@", "Info.plist", plistOK ? "OK ✅" : "INVALID ❌"))
 
         // 3. Bottle association
         let bottles = discovery.discoverBottles()
         let bottle = bottles.first(where: { $0.name == item.bottleName })
-        print(String(format: "  %-30@ : %@", "Bottle association [\(item.bottleName)]", bottle != nil ? "OK ✅" : "UNKNOWN ❌"))
 
         // 4. cxmenu entry
         var cxmenuOK = false
@@ -1091,14 +1512,12 @@ class CXToolCLI {
             let bMenu = discovery.parseCxMenuConf(at: "\(b.path)/cxmenu.conf")
             cxmenuOK = bMenu[mPath] != nil
         }
-        print(String(format: "  %-30@ : %@", "cxmenu entry", cxmenuOK ? "OK ✅" : "MISSING ❌"))
 
         // 5. desktopdata launcher
         var launcherOK = false
         if let cmd = item.commandPath?.trimmingCharacters(in: CharacterSet(charactersIn: "\"")) {
             launcherOK = fm.fileExists(atPath: cmd) && fm.isExecutableFile(atPath: cmd)
         }
-        print(String(format: "  %-30@ : %@", "desktopdata launcher", launcherOK ? "OK ✅" : "MISSING ❌"))
 
         // 6. Windows shortcut
         var lnkOK = false
@@ -1109,7 +1528,6 @@ class CXToolCLI {
             let deskUrl = "\(b.path)/drive_c/users/crossover/Desktop/\(item.name).url"
             lnkOK = fm.fileExists(atPath: startLnk) || fm.fileExists(atPath: startUrl) || fm.fileExists(atPath: deskLnk) || fm.fileExists(atPath: deskUrl)
         }
-        print(String(format: "  %-30@ : %@", "Windows shortcut", lnkOK ? "OK (Binary Untouched) ✅" : "NOT FOUND ⚠️"))
 
         // 7. Icon resources
         var iconsOK = false
@@ -1117,7 +1535,6 @@ class CXToolCLI {
             let icns = "\(app)/Contents/Resources/CrossOverHelper.icns"
             iconsOK = fm.fileExists(atPath: icns) && item.isSquircle
         }
-        print(String(format: "  %-30@ : %@", "Icon resources (Squircle)", iconsOK ? "OK ✅" : "NEEDS REPAIR ❌"))
 
         // 8. Executable target & Launch Chain
         var launchChainValid = false
@@ -1134,17 +1551,52 @@ class CXToolCLI {
                 launchChainValid = true
             }
         }
+
+        let isHealthy = wrapperExists && plistOK && bottle != nil && cxmenuOK && launcherOK && iconsOK && launchChainValid
+        let overallStatus = isHealthy ? (item.isOffline ? "healthy_offline" : "healthy") : "degraded"
+
+        if self.isJSON {
+            let checks = VerifyChecks(
+                wrapper_exists: wrapperExists,
+                plist_ok: plistOK,
+                bottle_ok: bottle != nil,
+                cxmenu_ok: cxmenuOK,
+                launcher_ok: launcherOK,
+                windows_shortcut_ok: lnkOK,
+                icon_squircle_ok: iconsOK,
+                launch_chain_valid: launchChainValid
+            )
+            let report = VerifyReport(
+                target: item.name,
+                bottle: item.bottleName,
+                healthy: isHealthy,
+                overall_status: overallStatus,
+                target_executable_status: targetStatus,
+                checks: checks
+            )
+            printJSON(report)
+            exit(isHealthy ? 0 : 5)
+        }
+
+        print("=== Launch Chain & Integrity Audit: [\(item.name)] ===")
+        print(String(format: "  %-30@ : %@", "Wrapper exists", wrapperExists ? "OK ✅" : "MISSING ❌"))
+        print(String(format: "  %-30@ : %@", "Info.plist", plistOK ? "OK ✅" : "INVALID ❌"))
+        print(String(format: "  %-30@ : %@", "Bottle association [\(item.bottleName)]", bottle != nil ? "OK ✅" : "UNKNOWN ❌"))
+        print(String(format: "  %-30@ : %@", "cxmenu entry", cxmenuOK ? "OK ✅" : "MISSING ❌"))
+        print(String(format: "  %-30@ : %@", "desktopdata launcher", launcherOK ? "OK ✅" : "MISSING ❌"))
+        print(String(format: "  %-30@ : %@", "Windows shortcut", lnkOK ? "OK (Binary Untouched) ✅" : "NOT FOUND ⚠️"))
+        print(String(format: "  %-30@ : %@", "Icon resources (Squircle)", iconsOK ? "OK ✅" : "NEEDS REPAIR ❌"))
         print(String(format: "  %-30@ : %@", "Executable target", targetStatus))
         print(String(format: "  %-30@ : %@", "Launch chain", launchChainValid ? "VALID ✅" : "INVALID ❌"))
 
         print(String(repeating: "-", count: 55))
-        let isHealthy = wrapperExists && plistOK && bottle != nil && cxmenuOK && launcherOK && iconsOK && launchChainValid
         if isHealthy {
             if item.isOffline {
                 print("Overall ..................... HEALTHY (External Storage Offline) ⚠️")
             } else {
                 print("Overall ..................... HEALTHY ✅")
             }
+            exit(0)
         } else {
             print("Overall ..................... DEGRADED ❌")
             exit(5)
@@ -1153,8 +1605,15 @@ class CXToolCLI {
 
     // MARK: - cmdHistory & cmdUndo (V1.1.1)
 
-    func cmdHistory() {
+    func cmdHistory(args: [String] = []) {
         let snapshots = TransactionManager.shared.listSnapshots()
+
+        if self.isJSON {
+            let report = HistoryReport(total: snapshots.count, transactions: snapshots)
+            printJSON(report)
+            return
+        }
+
         if snapshots.isEmpty {
             print("No transaction history found in ~/.cxtool/backups/.")
             return
@@ -1723,6 +2182,361 @@ class CXToolCLI {
         default:
             print("Unknown config command: \(sub)")
             exit(2)
+        }
+    }
+
+    // MARK: - cmdStatus (V1.2.0)
+
+    func cmdStatus(args: [String]) {
+        let bottles = discovery.discoverBottles()
+        let bottleRoots = discovery.discoverBottleRoots()
+        let appsDir = discovery.discoverProgramsFolder().path
+        let shortcuts = discovery.scanAllShortcuts()
+        let snapshots = TransactionManager.shared.listSnapshots()
+
+        let crossoverDetected = !bottles.isEmpty || FileManager.default.fileExists(atPath: "/Applications/CrossOver.app")
+        let healthyShortcuts = shortcuts.filter { $0.isSquircle && !$0.isOffline }.count
+        let iconCompliant = shortcuts.filter { $0.isSquircle }.count
+        let iconPercent = shortcuts.isEmpty ? 100.0 : (Double(iconCompliant * 1000 / shortcuts.count) / 10.0)
+
+        var offlineRoots: [String] = []
+        var onlineRoots: [String] = []
+        for r in config.external_game_roots {
+            if FileManager.default.fileExists(atPath: r) {
+                onlineRoots.append(r)
+            } else {
+                offlineRoots.append(r)
+            }
+        }
+        for s in shortcuts where s.isOffline {
+            if let exe = s.targetExe {
+                let prefix = (exe as NSString).pathComponents.prefix(3).joined(separator: "/")
+                if !offlineRoots.contains(prefix) && !onlineRoots.contains(prefix) {
+                    offlineRoots.append(prefix)
+                }
+            }
+        }
+
+        let totalBackupBytes = recursiveDirectorySize(at: TransactionManager.shared.backupBaseURL)
+        let activeUndoSnapshot = snapshots.first(where: { $0.undone != true })
+        let undoAvailable = activeUndoSnapshot != nil
+
+        var lastTxSummary: LastTransactionSummary? = nil
+        if let first = snapshots.first {
+            let stat = first.undone == true ? "undone" : (first.verified ? "verified" : "unverified")
+            lastTxSummary = LastTransactionSummary(
+                transaction_id: first.transaction_id,
+                action: first.action,
+                target: first.target,
+                bottle: first.bottle,
+                created_at: first.created_at,
+                status: stat
+            )
+        }
+
+        let isLocked = ProcessLock.shared.isLocked()
+        let lockStatus = isLocked ? "ACTIVE" : "IDLE"
+
+        if self.isJSON {
+            let report = StatusReport(
+                environment: EnvironmentStatus(
+                    crossover_detected: crossoverDetected,
+                    bottle_roots: bottleRoots.map { $0.path },
+                    applications_dir: appsDir
+                ),
+                inventory: InventoryStatus(
+                    bottles_count: bottles.count,
+                    bottles: bottles.map { $0.name },
+                    shortcuts_count: shortcuts.count,
+                    healthy_shortcuts_count: healthyShortcuts,
+                    icon_compliant_count: iconCompliant,
+                    icon_compliance_percent: iconPercent
+                ),
+                storage: StorageStatus(
+                    external_roots_online: onlineRoots,
+                    external_roots_offline: offlineRoots
+                ),
+                safety: SafetyStatus(
+                    snapshots_count: snapshots.count,
+                    backup_disk_bytes: totalBackupBytes,
+                    backup_disk_human: formatBytes(totalBackupBytes),
+                    undo_available: undoAvailable,
+                    last_transaction: lastTxSummary,
+                    mutation_lock: lockStatus
+                )
+            )
+            printJSON(report)
+            return
+        }
+
+        print("=== cxtool System Status ===")
+        print("\n[Environment]")
+        print("  CrossOver Detected ......... \(crossoverDetected ? "YES ✅" : "NO ⚠️")")
+        print("  Applications Directory ..... \(appsDir)")
+        print("  Bottle Roots (\(bottleRoots.count)) ........... \(bottleRoots.map { $0.path }.joined(separator: ", "))")
+
+        print("\n[Inventory]")
+        let bottleNames = bottles.map { $0.name }.joined(separator: ", ")
+        print("  Active Bottles (\(bottles.count)) ......... \(bottleNames.isEmpty ? "<None>" : bottleNames)")
+        print("  Total Shortcuts ............ \(shortcuts.count)")
+        print("  Healthy Shortcuts .......... \(healthyShortcuts)")
+        print("  Icon Compliance ............ \(iconCompliant)/\(shortcuts.count) (\(iconPercent)%) macOS Squircles \(iconPercent >= 100.0 ? "✅" : "⚠️")")
+
+        print("\n[Storage]")
+        print("  Online Roots (\(onlineRoots.count)) .......... \(onlineRoots.isEmpty ? "<None>" : onlineRoots.joined(separator: ", "))")
+        print("  Offline Roots (\(offlineRoots.count)) ......... \(offlineRoots.isEmpty ? "<None>" : offlineRoots.joined(separator: ", ") + " ⚠️ (Protected)")")
+
+        print("\n[Safety & Recovery]")
+        print("  Snapshots Stored ........... \(snapshots.count)")
+        print("  Backup Disk Usage .......... \(formatBytes(totalBackupBytes))")
+        if let undoTarget = activeUndoSnapshot {
+            print("  Undo Available ............. YES ✅ (Target: \(undoTarget.target), ID: \(undoTarget.transaction_id))")
+        } else {
+            print("  Undo Available ............. NONE")
+        }
+        if let tx = lastTxSummary {
+            print("  Last Transaction ........... \(tx.transaction_id) [\(tx.action) -> \(tx.target)] (\(tx.status))")
+        } else {
+            print("  Last Transaction ........... <None>")
+        }
+        print("  Mutation Lock .............. \(lockStatus == "IDLE" ? "IDLE ✅" : "ACTIVE ⚠️")")
+        print("")
+    }
+
+    // MARK: - cmdBackups (V1.2.0)
+
+    func cmdBackups(args: [String]) {
+        let sub = args.first(where: { !$0.hasPrefix("--") }) ?? "list"
+
+        switch sub {
+        case "list":
+            cmdBackupsList()
+        case "prune":
+            cmdBackupsPrune(args: args)
+        default:
+            exitWithError(code: 2, type: "invalid_subcommand", message: "Unknown backups subcommand '\(sub)'. Usage: cxtool backups [list|prune] [options]", isJSON: self.isJSON)
+        }
+    }
+
+    func cmdBackupsList() {
+        let snapshots = TransactionManager.shared.listSnapshots()
+        let activeUndoId = snapshots.first(where: { $0.undone != true })?.transaction_id
+        var items: [BackupSnapshotItem] = []
+        var totalBytes: Int64 = 0
+
+        for s in snapshots {
+            let sDir = TransactionManager.shared.backupBaseURL.appendingPathComponent(s.transaction_id)
+            let bytes = recursiveDirectorySize(at: sDir)
+            totalBytes += bytes
+
+            let stat = s.undone == true ? "undone" : (s.verified ? "verified" : "unverified")
+            let isUndo = s.transaction_id == activeUndoId
+
+            items.append(BackupSnapshotItem(
+                transaction_id: s.transaction_id,
+                action: s.action,
+                target: s.target,
+                bottle: s.bottle,
+                created_at: s.created_at,
+                touched_files_count: s.files.count,
+                disk_bytes: bytes,
+                disk_human: formatBytes(bytes),
+                status: stat,
+                is_active_undo: isUndo
+            ))
+        }
+
+        if self.isJSON {
+            let report = BackupsListReport(
+                total_snapshots: items.count,
+                total_disk_bytes: totalBytes,
+                total_disk_human: formatBytes(totalBytes),
+                snapshots: items
+            )
+            printJSON(report)
+            return
+        }
+
+        if items.isEmpty {
+            print("No snapshot backups found in ~/.cxtool/backups/.")
+            return
+        }
+
+        print("=== Stored Transaction Snapshots ===")
+        print(String(format: "%-20@ | %-8@ | %-24@ | %-6@ | %-10@ | %-6@ | %-10@",
+                     "Snapshot ID", "Action", "Target", "Files", "Disk Size", "Undo", "Status"))
+        print(String(repeating: "-", count: 96))
+
+        for item in items {
+            print(String(format: "%-20@ | %-8@ | %-24@ | %-6@ | %-10@ | %-6@ | %-10@",
+                         item.transaction_id.prefix(20) as NSString,
+                         item.action as NSString,
+                         item.target.prefix(24) as NSString,
+                         "\(item.touched_files_count)" as NSString,
+                         item.disk_human as NSString,
+                         item.is_active_undo ? "YES ⭐" : "NO",
+                         item.status as NSString))
+        }
+        print(String(repeating: "=", count: 96))
+        print("Total: \(items.count) snapshot(s), consuming \(formatBytes(totalBytes)) on disk.")
+        if let undoId = activeUndoId {
+            print("Active undo target: \(undoId)")
+        }
+    }
+
+    func cmdBackupsPrune(args: [String]) {
+        let keep = getFlagValue("--keep", from: args).flatMap { Int($0) } ?? 10
+        let days = getFlagValue("--days", from: args).flatMap { Int($0) } ?? 30
+        let dryRun = args.contains("--dry-run")
+        let force = args.contains("--force")
+
+        let snapshots = TransactionManager.shared.listSnapshots()
+        let activeUndoId = snapshots.first(where: { $0.undone != true })?.transaction_id
+
+        var eligibleToPrune: [(manifest: TransactionManifest, dirURL: URL, size: Int64, ageDays: Int)] = []
+        var preservedCount = 0
+
+        let now = Date()
+        let calendar = Calendar.current
+        let isoFmt = ISO8601DateFormatter()
+
+        for (index, s) in snapshots.enumerated() {
+            let snapshotDir = TransactionManager.shared.backupBaseURL.appendingPathComponent(s.transaction_id)
+            let dirSize = recursiveDirectorySize(at: snapshotDir)
+
+            // Guard 1: Never prune the active undo snapshot
+            if let undoId = activeUndoId, s.transaction_id == undoId {
+                preservedCount += 1
+                continue
+            }
+
+            // Guard 2: Only prune terminal snapshots (verified: true OR undone: true)
+            let isTerminal = (s.verified == true) || (s.undone == true)
+            guard isTerminal else {
+                preservedCount += 1
+                continue
+            }
+
+            // Guard 3: Dual retention condition (index >= keep AND age >= days)
+            let createdDate = isoFmt.date(from: s.created_at) ?? now
+            let ageDays = calendar.dateComponents([.day], from: createdDate, to: now).day ?? 0
+
+            if index >= keep && ageDays >= days {
+                eligibleToPrune.append((manifest: s, dirURL: snapshotDir, size: dirSize, ageDays: ageDays))
+            } else {
+                preservedCount += 1
+            }
+        }
+
+        let totalReclaimableBytes = eligibleToPrune.reduce(0) { $0 + $1.size }
+
+        if eligibleToPrune.isEmpty {
+            if self.isJSON {
+                let report = PruneReport(
+                    dry_run: dryRun,
+                    pruned_count: 0,
+                    reclaimed_bytes: 0,
+                    reclaimed_human: "0 B",
+                    preserved_count: snapshots.count,
+                    pruned_snapshots: []
+                )
+                printJSON(report)
+                return
+            }
+            print("✅ No snapshots eligible for pruning. All \(snapshots.count) snapshot(s) retained.")
+            print("   Criteria: outside newest \(keep) AND older than \(days) days, with terminal status and not active undo.")
+            return
+        }
+
+        if !self.isJSON {
+            print("=== Backups Retention Prune Plan ===")
+            print("Criteria: outside newest \(keep) AND older than \(days) days.")
+            print("Eligible snapshots for deletion (\(eligibleToPrune.count)):")
+            for item in eligibleToPrune {
+                print("  • \(item.manifest.transaction_id) (\(item.ageDays) days old, \(formatBytes(item.size))) [\(item.manifest.action) -> \(item.manifest.target)]")
+            }
+            print("Total disk space to reclaim: \(formatBytes(totalReclaimableBytes))")
+        }
+
+        if dryRun {
+            if self.isJSON {
+                let report = PruneReport(
+                    dry_run: true,
+                    pruned_count: eligibleToPrune.count,
+                    reclaimed_bytes: totalReclaimableBytes,
+                    reclaimed_human: formatBytes(totalReclaimableBytes),
+                    preserved_count: preservedCount,
+                    pruned_snapshots: eligibleToPrune.map { $0.manifest.transaction_id }
+                )
+                printJSON(report)
+                return
+            }
+            print("\nℹ️  [Dry-Run] Retention prune preview displayed above. No files were deleted.")
+            return
+        }
+
+        if !force && !self.isJSON {
+            print("\nAre you sure you want to permanently delete these \(eligibleToPrune.count) snapshot(s)? [y/N]: ", terminator: "")
+            fflush(stdout)
+            let response = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "n"
+            guard response == "y" || response == "yes" else {
+                print("Prune aborted by user.")
+                return
+            }
+        }
+
+        var prunedIds: [String] = []
+        var actuallyReclaimedBytes: Int64 = 0
+        for item in eligibleToPrune {
+            do {
+                try FileManager.default.removeItem(at: item.dirURL)
+                prunedIds.append(item.manifest.transaction_id)
+                actuallyReclaimedBytes += item.size
+            } catch {
+                FileHandle.standardError.write(Data("❌ Failed to remove \(item.manifest.transaction_id): \(error.localizedDescription)\n".utf8))
+            }
+        }
+
+        if self.isJSON {
+            let report = PruneReport(
+                dry_run: false,
+                pruned_count: prunedIds.count,
+                reclaimed_bytes: actuallyReclaimedBytes,
+                reclaimed_human: formatBytes(actuallyReclaimedBytes),
+                preserved_count: preservedCount,
+                pruned_snapshots: prunedIds
+            )
+            printJSON(report)
+            return
+        }
+
+        print("\n🎉 Prune complete! Deleted \(prunedIds.count) snapshot(s), reclaimed \(formatBytes(actuallyReclaimedBytes)).")
+    }
+
+    // MARK: - cmdCompletion (V1.2.0)
+
+    func cmdCompletion(args: [String]) {
+        let nonFlagArgs = args.filter { !$0.hasPrefix("--") }
+        guard let shell = nonFlagArgs.first, shell.lowercased() == "zsh" else {
+            exitWithError(code: 2, type: "invalid_usage", message: "Usage: cxtool completion zsh", isJSON: self.isJSON)
+        }
+
+        print(cxtoolZshCompletionScript)
+    }
+
+    // MARK: - Fast Read-Only Shell Helpers
+
+    func cmdCompleteShortcuts() {
+        let shortcuts = discovery.scanAllShortcuts()
+        for s in shortcuts {
+            print(s.name)
+        }
+    }
+
+    func cmdCompleteBottles() {
+        let bottles = discovery.discoverBottles()
+        for b in bottles {
+            print(b.name)
         }
     }
 

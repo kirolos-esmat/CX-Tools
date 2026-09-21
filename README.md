@@ -51,10 +51,11 @@ Discover  ──▶  Validate  ──▶  Plan  ──▶  Backup (Manifest)  �
 
 ```bash
 # Inspection & Diagnostics
+cxtool status [--json]                              # High-level system, inventory, storage & safety dashboard
 cxtool doctor                                       # Comprehensive environment and path audit
-cxtool list [--bottle <name>]                       # Tabular overview of all shortcuts and icon status
-cxtool inspect "Game Name"                          # Full CrossOver configuration dump for a game
-cxtool verify "Game Name"                           # 9-point deep audit of launch chain & shortcut integrity
+cxtool list [--bottle <name>] [--json]              # Tabular overview of all shortcuts and icon status
+cxtool inspect "Game Name" [--json]                 # Full CrossOver configuration dump for a game
+cxtool verify "Game Name" [--json]                  # 9-point deep audit of launch chain & shortcut integrity
 
 # Icon Management
 cxtool set-icon "Game Name" /path/to/art.png [--style macos|full-bleed|emblem|raw] [--bg black|white|#hex] [--scale <float>]
@@ -66,14 +67,19 @@ cxtool rename "Old Name" "New Name" [--dry-run]
 cxtool delete "Game Name" [--dry-run] [--force]
 
 # Safety, History & Backups
-cxtool history                                      # View ledger of transactions
+cxtool history [--json]                             # View ledger of transactions
 cxtool undo                                         # Revert the most recent verified transaction
 cxtool backup [--note "text"]                       # Create a manual snapshot of CrossOver menus and icons
 cxtool restore <backup-id>                          # Rollback to a specific snapshot ID
+cxtool backups [list] [--json]                      # Inspect snapshots with disk usage and undo target
+cxtool backups prune [--keep <N>] [--days <N>] [--dry-run] [--force] [--json] # Prune old snapshots safely
 cxtool config [show|add-bottle-dir|add-library-dir] # Manage persistent bottle and search paths
 
+# Shell Completion
+cxtool completion zsh                               # Output native Zsh completion function
+
 # Version
-cxtool --version                                    # Print version (1.1.3)
+cxtool --version                                    # Print version (1.2.0)
 ```
 
 ---
@@ -135,23 +141,31 @@ cxtool repair-all --dry-run
 
 ---
 
-## Version
+## Shell Completion (Zsh)
 
-Current stable release: **`1.1.3 Stable`**
+Generate and install native Zsh completion for `cxtool`:
 
-For architectural details, refer to [Architecture Documentation](docs/architecture.md).  
-For release history, see [CHANGELOG.md](CHANGELOG.md).
+```bash
+# Option 1: Load directly in current session
+source <(cxtool completion zsh)
+
+# Option 2: Install to your user Zsh completions directory
+mkdir -p ~/.zfunc
+cxtool completion zsh > ~/.zfunc/_cxtool
+
+# Add to ~/.zshrc (before compinit):
+#   fpath=(~/.zfunc $fpath)
+#   autoload -Uz compinit && compinit
+```
 
 ---
 
-## Roadmap (Planned V1.2 — Usability Focus)
+## Version
 
-The core lifecycle (`discover → validate → backup → apply → verify → rollback`) is locked and stable. Planned enhancements for **V1.2** focus strictly on usability and CLI integrations:
+Current stable release: **`1.2.0 Stable`**
 
-- **`cxtool status`**: Quick terminal dashboard summarizing total shortcuts, squircle compliance percentage, active bottles, and storage health.
-- **`--json` Output**: Machine-readable JSON output for `list`, `inspect`, `verify`, and `history` to support scripting and Raycast / Shortcuts extensions.
-- **`cxtool backups`**: Dedicated snapshot manager to list, inspect, and safely prune backups.
-- **Rolling Retention Policy**: Automatic retention limit (e.g. retaining the 20 most recent snapshots in `~/.cxtool/backups/`) to prevent indefinite storage growth.
+For architectural details, refer to [Architecture Documentation](docs/architecture.md).  
+For release history, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
