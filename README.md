@@ -68,7 +68,7 @@ cxtool restore <backup-id>            # Rollback to a specific snapshot ID
 cxtool config [show|add-bottle-dir]   # Manage persistent bottle and search paths
 
 # Version
-cxtool --version                      # Print version (1.1.1)
+cxtool --version                      # Print version (1.1.2)
 ```
 
 ---
@@ -132,7 +132,7 @@ cxtool repair-all --dry-run
 
 ## Version
 
-Current stable release: **`1.1.1 Stable`**
+Current stable release: **`1.1.2 Stable`**
 
 For architectural details, refer to [Architecture Documentation](docs/architecture.md).  
 For release history, see [CHANGELOG.md](CHANGELOG.md).

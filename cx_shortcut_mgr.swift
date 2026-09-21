@@ -853,7 +853,7 @@ class CXToolCLI {
         case "config":
             cmdConfig(args: remaining)
         case "version", "--version", "-v":
-            print("cxtool 1.1.1")
+            print("cxtool 1.1.2")
         case "help", "--help", "-h":
             printUsage()
         default:
@@ -864,7 +864,7 @@ class CXToolCLI {
 
     func printUsage() {
         print("""
-        cxtool - CrossOver Mac Bottle Shortcut & Icon Manager (V1.1.1 Stable)
+        cxtool - CrossOver Mac Bottle Shortcut & Icon Manager (V1.1.2 Stable)
 
         USAGE:
           cxtool <command> [options]
