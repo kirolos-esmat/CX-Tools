@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-verify:
+    name: Build & Verify on macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compile cxtool
+        run: |
+          swiftc -O cx_shortcut_mgr.swift -o cxtool
+          chmod +x cxtool
+
+      - name: Verify Version
+        run: |
+          ./cxtool --version
+          test "$(./cxtool --version)" = "cxtool 1.1.2"
+
+      - name: Verify CLI Help
+        run: |
+          ./cxtool --help
+
+      - name: Verify Environment Doctor Check
+        run: |
+          ./cxtool doctor
