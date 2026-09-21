@@ -326,10 +326,18 @@ _cxtool() {
                         '--json[Output structured machine-readable JSON]' \
                         '--verbose[Show internal paths]'
                     ;;
-                inspect|verify|repair)
+                inspect|verify)
                     _arguments \
                         '1:shortcut:->shortcuts' \
-                        '--json[Output structured machine-readable JSON]' \
+                        '--json[Output structured machine-readable JSON]'
+                    ;;
+                repair)
+                    _arguments \
+                        '1:shortcut:->shortcuts' \
+                        '--dry-run[Preview changes without modifying disk]'
+                    ;;
+                repair-all)
+                    _arguments \
                         '--dry-run[Preview changes without modifying disk]'
                     ;;
                 set-icon)
@@ -338,7 +346,8 @@ _cxtool() {
                         '2:image file:_files -g "*.png *.jpg *.jpeg *.ico *.icns"' \
                         '--style[Icon rendering style]:style:(macos full-bleed emblem raw)' \
                         '--bg[Background fill color]:color:(black white #1a1a1a #000000 #ffffff)' \
-                        '--scale[Optical scaling factor]:scale:(0.75 0.80 0.85 0.90 1.0)'
+                        '--scale[Optical scaling factor]:scale:(0.75 0.80 0.85 0.90 1.0)' \
+                        '--dry-run[Preview changes without modifying disk]'
                     ;;
                 rename)
                     _arguments \
@@ -2385,8 +2394,8 @@ class CXToolCLI {
     }
 
     func cmdBackupsPrune(args: [String]) {
-        let keep = getFlagValue("--keep", from: args).flatMap { Int($0) } ?? 10
-        let days = getFlagValue("--days", from: args).flatMap { Int($0) } ?? 30
+        let keep = nonNegativeIntegerFlag("--keep", in: args, defaultValue: 10)
+        let days = nonNegativeIntegerFlag("--days", in: args, defaultValue: 30)
         let dryRun = args.contains("--dry-run")
         let force = args.contains("--force")
 
@@ -2547,6 +2556,16 @@ class CXToolCLI {
             return args[idx + 1]
         }
         return nil
+    }
+
+    func nonNegativeIntegerFlag(_ flag: String, in args: [String], defaultValue: Int) -> Int {
+        guard let index = args.firstIndex(of: flag) else { return defaultValue }
+        guard index + 1 < args.count,
+              let value = Int(args[index + 1]),
+              value >= 0 else {
+            exitWithError(code: 2, type: "invalid_usage", message: "\(flag) requires a non-negative integer.", isJSON: isJSON)
+        }
+        return value
     }
 }
 

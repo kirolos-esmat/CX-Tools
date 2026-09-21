@@ -101,6 +101,8 @@ All read and inspection commands (`status`, `list`, `inspect`, `verify`, `histor
 - Every payload includes top-level `"schema_version": 1`.
 - Structured error handling: on non-zero exit codes (`2`, `3`, `4`, `5`, `6`), `cxtool` emits a structured JSON error object containing the numeric code, error type string, descriptive message, and candidate matches if applicable.
 
+Refer to [JSON Schema Specification (v1)](json-schema-v1.md) for the complete data contracts and field definitions.
+
 ---
 
 ## Standardized Exit Codes
@@ -116,4 +118,3 @@ All read and inspection commands (`status`, `list`, `inspect`, `verify`, `histor
 | `4` | Ambiguous Query | Query matched multiple shortcuts; interactive resolution required. |
 | `5` | Integrity Degraded | `cxtool verify` detected broken launch chains or missing components. |
 | `6` | Lock Collision | Process lock (`~/.cxtool/cxtool.lock`) held by another active instance. |
-

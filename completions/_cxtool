@@ -44,10 +44,18 @@ _cxtool() {
                         '--json[Output structured machine-readable JSON]' \
                         '--verbose[Show internal paths]'
                     ;;
-                inspect|verify|repair)
+                inspect|verify)
                     _arguments \
                         '1:shortcut:->shortcuts' \
-                        '--json[Output structured machine-readable JSON]' \
+                        '--json[Output structured machine-readable JSON]'
+                    ;;
+                repair)
+                    _arguments \
+                        '1:shortcut:->shortcuts' \
+                        '--dry-run[Preview changes without modifying disk]'
+                    ;;
+                repair-all)
+                    _arguments \
                         '--dry-run[Preview changes without modifying disk]'
                     ;;
                 set-icon)
@@ -56,7 +64,8 @@ _cxtool() {
                         '2:image file:_files -g "*.png *.jpg *.jpeg *.ico *.icns"' \
                         '--style[Icon rendering style]:style:(macos full-bleed emblem raw)' \
                         '--bg[Background fill color]:color:(black white #1a1a1a #000000 #ffffff)' \
-                        '--scale[Optical scaling factor]:scale:(0.75 0.80 0.85 0.90 1.0)'
+                        '--scale[Optical scaling factor]:scale:(0.75 0.80 0.85 0.90 1.0)' \
+                        '--dry-run[Preview changes without modifying disk]'
                     ;;
                 rename)
                     _arguments \

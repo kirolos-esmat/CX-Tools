@@ -123,9 +123,15 @@ jobs:
 
           ./cxtool inspect "NonExistent" --json > /tmp/err3.json
           test $? -eq 3 && jq -e '.schema_version == 1 and .error.code == 3 and .error.type == "target_not_found"' /tmp/err3.json
+
+          ./cxtool backups prune --keep -1 --json > /tmp/err4.json
+          test $? -eq 2 && jq -e '.schema_version == 1 and .error.code == 2 and .error.type == "invalid_usage"' /tmp/err4.json
+
+          ./cxtool backups prune --days invalid --json > /tmp/err5.json
+          test $? -eq 2 && jq -e '.schema_version == 1 and .error.code == 2 and .error.type == "invalid_usage"' /tmp/err5.json
           set -e
 
-          rm -rf "$TMP_HOME" /tmp/err2.json /tmp/err3.json
+          rm -rf "$TMP_HOME" /tmp/err2.json /tmp/err3.json /tmp/err4.json /tmp/err5.json
           echo "✅ All isolated JSON assertions passed."
 
       - name: Verify Zsh Shell Completion Drift & Syntax

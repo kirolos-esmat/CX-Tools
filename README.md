@@ -164,7 +164,8 @@ cxtool completion zsh > ~/.zfunc/_cxtool
 
 Current stable release: **`1.2.0 Stable`**
 
-For architectural details, refer to [Architecture Documentation](docs/architecture.md).  
+For architectural details, refer to [Architecture Documentation](docs/architecture.md).
+For the machine-readable JSON API specification, refer to [JSON Schema Specification (v1)](docs/json-schema-v1.md).
 For release history, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
