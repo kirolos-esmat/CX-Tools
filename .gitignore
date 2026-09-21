@@ -1,0 +1,10 @@
+# Ignore CrossOver Bottles and heavy prefixes
+Steam/
+Epic Games/
+*.dmg
+*.iso
+.DS_Store
+Icon?
+
+# Ignore compiled binaries
+cxtool
